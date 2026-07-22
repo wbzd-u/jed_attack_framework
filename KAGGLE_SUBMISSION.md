@@ -1,17 +1,24 @@
 # Kaggle submission notebook
 
 The competition runs with Internet disabled. Publish this repository as a
-private Kaggle Dataset (or upload a zip whose root contains `jedfw/`,
-`knowledge/`, and `bundle_submission.py`) before using the notebook.
+private Kaggle Dataset before using the notebook. The prepared release archive
+is `dist/jed_attack_framework.zip`; it contains only Git-tracked source and
+documentation, not local traces, artifacts, or credentials.
 
 In Kaggle:
 
-1. Create a GPU notebook for `ai-agent-security-multi-step-tool-attacks`.
-2. Attach the competition data input and the private framework dataset.
-3. Upload `kaggle_submission.ipynb` from this repository.
-4. Set the `FRAMEWORK_ROOT` path in the first code cell only if automatic
+1. Open **Kaggle → Datasets → New Dataset** and set its visibility to
+   **Private**.
+2. Upload `dist/jed_attack_framework.zip`, create the dataset, and wait for
+   processing to finish.
+3. Open the competition page, select **Code → New Notebook**, attach both the
+   competition data and this private dataset in the right-side **Add Input**
+   panel, then select a GPU accelerator if the competition UI offers one.
+4. Upload `kaggle_submission.ipynb` from this repository or replace the new
+   notebook's contents with it.
+5. Set the `FRAMEWORK_ROOT` path in the first code cell only if automatic
    discovery cannot find the attached dataset.
-5. Keep Internet disabled. The notebook copies the framework to
+6. Keep Internet disabled. The notebook copies the framework to
    `/kaggle/working`, writes the required `attack.py`, and starts only the
    official JED inference server.
 

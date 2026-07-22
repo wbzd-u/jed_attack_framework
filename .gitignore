@@ -12,3 +12,4 @@ __pycache__/
 # Kaggle / packaging by-products.
 submission.csv
 *.tgz
+dist/
