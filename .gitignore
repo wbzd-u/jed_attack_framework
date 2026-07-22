@@ -1,0 +1,14 @@
+# Local execution evidence and provider responses can contain benchmark fixture
+# text or model reasoning. Keep them local unless deliberately curated.
+artifacts/
+traces/
+
+# Local-only helpers and Python cache.
+ssh_askpass.cmd
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Kaggle / packaging by-products.
+submission.csv
+*.tgz

@@ -1,0 +1,3 @@
+# Intentionally empty: add benchmark-specific action primitives after fixture
+# and model probing. The framework should not silently assume old prompts
+# transfer to this benchmark.

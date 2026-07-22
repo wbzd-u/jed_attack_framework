@@ -1,0 +1,2 @@
+# Intentionally empty: import normalized mechanism cards only after checking
+# their JED preconditions and replay evidence.
