@@ -35,6 +35,40 @@ is empty. This is intentional: prompt and tactic data is added only after
 fixture-specific probing, rather than silently inheriting unrelated historical
 payloads.
 
+## Current runnable baseline
+
+`knowledge/jed_actions.jsonl` now contains a small, fixture-agnostic
+hypothesis catalog. It is deliberately limited to source discovery, workflow
+bridges, and terminal-operation requests. These are search primitives, not
+claimed vulnerabilities and not replay-confirmed tactics.
+
+```powershell
+cd C:\Users\www29\jed_attack_framework
+python -m pytest -q
+.\run_local_eval.ps1 -Agent deterministic -Guardrail both -BudgetSeconds 30
+python bundle_submission.py . C:\kaggle\working
+```
+
+The deterministic runner is only a plumbing regression. A useful finding
+requires a successful real tool event, the SDK predicate on a clean replay,
+and then promotion to `knowledge/jed_tactics.jsonl`.
+
+## Search policy
+
+The first version uses four independent predicate lanes. Within a lane it:
+
+1. resets to a clean environment;
+2. discovers a web, email, or local workflow source;
+3. orders follow-up primitives from observed `tool_events` rather than prompt
+   position;
+4. restores opaque snapshots for branch exploration;
+5. confirms any predicate hit from a clean reset and greedily minimizes the
+   message chain; and
+6. returns only replay-confirmed candidates, deduplicated by score cell.
+
+Repeated no-tool replies are not treated as novelty. The search novelty key
+uses observable tool state and facts, not attacker-message wording.
+
 ## Knowledge records
 
 An action record has this shape:
