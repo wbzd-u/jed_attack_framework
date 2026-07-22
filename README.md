@@ -30,10 +30,9 @@ The competition SDK remains the source of truth for `eval_predicates` and
 The hidden environment exposes opaque snapshot handles, so snapshots are used
 only inside one search run and are never serialized into a candidate.
 
-The framework currently returns no candidates when `knowledge/jed_actions.jsonl`
-is empty. This is intentional: prompt and tactic data is added only after
-fixture-specific probing, rather than silently inheriting unrelated historical
-payloads.
+The framework returns no candidates if `knowledge/jed_actions.jsonl` is empty.
+This fail-closed behavior prevents a submission from silently inheriting
+unrelated historical payloads.
 
 ## Current runnable baseline
 
