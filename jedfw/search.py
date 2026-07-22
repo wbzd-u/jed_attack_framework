@@ -8,7 +8,7 @@ from .env import EnvAdapter
 from .knowledge import ActionCatalog
 from .models import Finding, SearchNode, TraceView
 from .replay import confirm_finding
-from .trace import build_trace_view, cell_key
+from .trace import build_trace_view, cell_key, progress_key
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,28 @@ class BeamSearch:
             cell_fn=self.cell_fn,
         )
 
+    def _ordered_actions(self, parent: SearchNode):
+        """Order legal primitives from observable state, not prompt position."""
+        facts = parent.view.facts
+        actions = self.catalog.applicable(facts, lane=self.config.lane)
+
+        if "has_tool_event" not in facts:
+            phases = ("source", "bridge", "action", "repair", "any")
+        elif {"web_source", "email_source"} & facts and "file_read" not in facts:
+            phases = ("bridge", "action", "repair", "source", "any")
+        elif "file_read" in facts:
+            phases = ("action", "bridge", "repair", "source", "any")
+        else:
+            phases = ("action", "repair", "bridge", "source", "any")
+
+        rank = {phase: index for index, phase in enumerate(phases)}
+        return tuple(
+            sorted(
+                actions,
+                key=lambda action: (rank.get(action.phase, len(rank)), -action.priority, action.name),
+            )
+        )
+
     def run(self) -> list[Finding]:
         self.env.reset()
         root_snapshot = self.env.snapshot()
@@ -89,10 +111,11 @@ class BeamSearch:
                 if self._expired() or nodes >= self.config.max_nodes:
                     break
 
-                actions = self.catalog.applicable(parent.view.facts, lane=self.config.lane)
-                for action in actions:
+                for action in self._ordered_actions(parent):
                     if self._expired() or nodes >= self.config.max_nodes:
                         break
+                    if action.text in parent.messages:
+                        continue
                     messages = parent.messages + (action.text,)
                     if messages in seen_messages:
                         continue
@@ -103,7 +126,7 @@ class BeamSearch:
                     nodes += 1
                     seen_messages.add(messages)
 
-                    key = cell_key(view)
+                    key = progress_key(view)
                     novel = key not in self.archive
                     self.archive.add(key)
                     stagnant = parent.stagnant_steps + (0 if novel else 1)

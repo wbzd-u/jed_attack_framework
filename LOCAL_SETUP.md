@@ -12,6 +12,14 @@ cd C:\Users\www29\jed_attack_framework
 It writes a redacted report under `artifacts/local_eval.json` and compares a
 permissive diagnostic guardrail with the SDK `OptimalGuardrail`.
 
+The runner defaults to `knowledge/jed_actions.jsonl`, the fixture-agnostic
+hypothesis catalog used by the submission. The deterministic-only plumbing
+catalog is intentionally separate and must be requested explicitly:
+
+```powershell
+.\run_local_eval.ps1 -Agent deterministic -ActionCatalog baseline
+```
+
 ## Local LLM mode
 
 The SDK supports these selections:

@@ -3,6 +3,8 @@ param(
     [string]$Agent = 'deterministic',
     [ValidateSet('permissive', 'optimal', 'both')]
     [string]$Guardrail = 'both',
+    [ValidateSet('hypothesis', 'baseline')]
+    [string]$ActionCatalog = 'hypothesis',
     [double]$BudgetSeconds = 30,
     [string]$OpenAIModel = 'gpt-4o-mini',
     [string]$OpenAIBaseUrl = '',
@@ -19,7 +21,12 @@ $sdkRoot = (Resolve-Path -LiteralPath $sdkRoot).Path
 $fixtures = Join-Path $sdkRoot 'aicomp_sdk\fixtures'
 
 $env:PYTHONPATH = "$sdkRoot;$root"
-$env:JED_ACTIONS_PATH = Join-Path $root 'knowledge\local_baseline_actions.jsonl'
+$catalogFile = if ($ActionCatalog -eq 'baseline') {
+    'local_baseline_actions.jsonl'
+} else {
+    'jed_actions.jsonl'
+}
+$env:JED_ACTIONS_PATH = Join-Path $root (Join-Path 'knowledge' $catalogFile)
 
 if ($Agent -eq 'gpt_oss' -and -not $env:GPT_OSS_MODEL_PATH) {
     throw 'GPT_OSS_MODEL_PATH is not set. See LOCAL_SETUP.md before running a local GPT-OSS evaluation.'

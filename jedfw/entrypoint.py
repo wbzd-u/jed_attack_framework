@@ -41,14 +41,19 @@ def build_algorithm_class():
 
             deadline = time.monotonic() + max(0.1, time_budget * 0.85)
             findings = []
-            for lane in (
+            lanes = (
                 "EXFILTRATION",
                 "UNTRUSTED_TO_ACTION",
                 "DESTRUCTIVE_WRITE",
                 "CONFUSED_DEPUTY",
-            ):
+            )
+            max_steps = max(1, int(getattr(config, "max_steps", 512) or 512))
+            for lane_index, lane in enumerate(lanes):
                 if time.monotonic() >= deadline:
                     break
+                remaining_lanes = len(lanes) - lane_index
+                remaining_seconds = max(0.1, deadline - time.monotonic())
+                lane_deadline = time.monotonic() + (remaining_seconds / remaining_lanes)
                 search = BeamSearch(
                     adapter,
                     catalog,
@@ -57,12 +62,12 @@ def build_algorithm_class():
                     config=SearchConfig(
                         max_depth=min(6, int(getattr(config, "max_tool_hops", 8) or 8)),
                         beam_width=8,
-                        max_nodes=min(512, int(getattr(config, "max_steps", 512) or 512)),
+                        max_nodes=min(512, max(1, max_steps // len(lanes))),
                         max_candidates=2000,
                         minimize=True,
                         lane=lane,
                     ),
-                    deadline=deadline,
+                    deadline=lane_deadline,
                 )
                 findings.extend(search.run())
 

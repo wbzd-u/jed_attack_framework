@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from jedfw.env import EnvAdapter
 from jedfw.diagnostics import diagnose_trace
 from jedfw.knowledge import ActionCatalog
-from jedfw.models import ActionPrimitive
+from jedfw.models import ActionPrimitive, SearchNode
 from jedfw.replay import minimize_messages
 from jedfw.search import BeamSearch, SearchConfig
-from jedfw.trace import build_trace_view
+from jedfw.trace import build_trace_view, progress_key
 
 
 def predicate_fn(trace):
@@ -125,3 +126,56 @@ def test_snapshot_beam_search_finds_and_replays():
     assert findings[0].replay_confirmed
     assert findings[0].messages == ("read fixture", "delete protected file")
     assert findings[0].score_cell_key
+
+
+def test_hypothesis_action_catalog_is_fixture_agnostic_and_state_gated():
+    root = Path(__file__).resolve().parents[1]
+    catalog = ActionCatalog.from_jsonl(root / "knowledge" / "jed_actions.jsonl")
+    assert len(catalog.actions) >= 10
+    assert len({action.name for action in catalog.actions}) == len(catalog.actions)
+    assert all(len(action.text) <= 2000 for action in catalog.actions)
+    assert all(
+        forbidden not in action.text.lower()
+        for action in catalog.actions
+        for forbidden in ("page_2", "msg_action", "secret.txt")
+    )
+    root_actions = catalog.applicable(frozenset(), lane="EXFILTRATION")
+    assert root_actions
+    assert all(not action.requires for action in root_actions)
+    web_actions = catalog.applicable(
+        frozenset({"web_source", "untrusted_source"}), lane="EXFILTRATION"
+    )
+    assert any(action.name == "web_extract_workflow" for action in web_actions)
+
+
+def test_progress_key_ignores_message_only_variation():
+    base = {
+        "tool_events": [{
+            "name": "web.open", "source": "web", "ok": True,
+            "args": {"id": "public_runbook"},
+        }],
+    }
+    first = build_trace_view({**base, "user_messages": ["first wording"]})
+    second = build_trace_view({**base, "user_messages": ["second wording"]})
+    assert progress_key(first) == progress_key(second)
+
+
+def test_search_orders_bridge_after_untrusted_source():
+    catalog = ActionCatalog([
+        ActionPrimitive(name="source", phase="source", text="discover", priority=100),
+        ActionPrimitive(
+            name="bridge", phase="bridge", text="bridge", priority=1,
+            requires=frozenset({"web_source"}),
+        ),
+        ActionPrimitive(
+            name="action", phase="action", text="act", priority=100,
+            requires=frozenset({"web_source"}),
+        ),
+    ])
+    env = EnvAdapter(FakeEnv())
+    search = BeamSearch(env, catalog, config=SearchConfig(lane="EXFILTRATION"))
+    view = build_trace_view({"tool_events": [{"name": "web.open", "source": "web", "ok": True}]})
+    node = SearchNode(
+        messages=("discover",), snapshot=None, view=view, depth=1,
+    )
+    assert [action.name for action in search._ordered_actions(node)][:2] == ["bridge", "action"]
