@@ -24,6 +24,9 @@ in `knowledge/` and are loaded at runtime.
   this machine.
 - `LOCAL_SETUP.md`: deterministic and local-LLM setup instructions.
 - `local_model_check.py`: verifies local backend availability without loading a model.
+- `kaggle_submission.ipynb`: notebook that packages an attached framework
+  dataset and starts the official Kaggle inference server.
+- `KAGGLE_SUBMISSION.md`: dataset attachment and submission instructions.
 
 The competition SDK remains the source of truth for `eval_predicates` and
 `cell_signature`; the framework only provides fallbacks when running offline.
