@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .baseline import baseline_chains
 from .env import EnvAdapter
 from .knowledge import ActionCatalog
 from .sdk import load_sdk, safe_candidates
@@ -28,6 +29,14 @@ def build_algorithm_class():
         def run(self, env: Any, config: Any) -> list[Any]:
             if candidate_cls is None:
                 return []
+
+            mode = os.getenv("JED_MODE", "search").strip().lower()
+            if mode == "baseline":
+                canary_count = int(os.getenv("JED_CANARY_COUNT", "24"))
+                return [
+                    safe_candidates(candidate_cls, item.messages)
+                    for item in baseline_chains(canary_count=canary_count)
+                ]
 
             catalog = ActionCatalog.from_jsonl(_catalog_path())
             if not catalog.actions:
@@ -83,6 +92,14 @@ def build_algorithm_class():
                 selected.values(),
                 key=lambda item: (-len(item.predicate_names), len(item.messages)),
             )
-            return [safe_candidates(candidate_cls, item.messages) for item in ordered[:2000]]
+            candidates = [safe_candidates(candidate_cls, item.messages) for item in ordered[:2000]]
+            if candidates or mode != "hybrid":
+                return candidates
+
+            canary_count = int(os.getenv("JED_CANARY_COUNT", "24"))
+            return [
+                safe_candidates(candidate_cls, item.messages)
+                for item in baseline_chains(canary_count=canary_count)
+            ]
 
     return AttackAlgorithm
