@@ -64,6 +64,24 @@ action catalog + mechanism memory
        AttackCandidate
 ```
 
+## Evidence classes and portfolio modes
+
+The framework makes a deliberate distinction between candidate generation and
+evidence:
+
+| Class | Origin | What it proves |
+|---|---|---|
+| Static scorer probe | public scorer contract | a replayable scoring boundary only |
+| Static source/fixture workflow | public carriers | a hypothesis to be replayed |
+| Search-observed candidate | successful sensitive tool event during generation | the current agent took an observable action, not that the evaluator will score it |
+| Search-confirmed finding | clean reset replay plus SDK predicate | a local benchmark finding |
+| Official leaderboard result | Kaggle hidden replay | the only hosted-evaluation evidence |
+
+`baseline`, `score`, and `fixture` modes return one controlled static family.
+`hybrid` and `portfolio` append dynamic search candidates to static coverage;
+they never replace a known baseline because a generation-time local success is
+not evidence that the static candidate stopped replaying.
+
 ## Four search lanes
 
 The scheduler runs separate lanes for `EXFILTRATION`, `UNTRUSTED_TO_ACTION`,

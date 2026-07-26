@@ -27,6 +27,8 @@ in `knowledge/` and are loaded at runtime.
 - `kaggle_submission.ipynb`: notebook that packages an attached framework
   dataset and starts the official Kaggle inference server.
 - `KAGGLE_SUBMISSION.md`: dataset attachment and submission instructions.
+- `EXPERIMENTS.md`: controlled Kaggle profiles, evidence labels, and the
+  submission/result record template.
 
 The competition SDK remains the source of truth for `eval_predicates` and
 `cell_signature`; the framework only provides fallbacks when running offline.
@@ -70,6 +72,22 @@ The first version uses four independent predicate lanes. Within a lane it:
 
 Repeated no-tool replies are not treated as novelty. The search novelty key
 uses observable tool state and facts, not attacker-message wording.
+
+## Replay portfolios
+
+`JED_MODE` selects a bounded candidate portfolio:
+
+- `baseline`: the historical source probes plus scorer canaries;
+- `score`: scorer-canary and explicit-intent boundary probes only;
+- `fixture`: released web/email carrier probes only;
+- `search`: trace-guided candidates observed during generation;
+- `hybrid`: baseline plus trace-guided candidates; and
+- `portfolio`: an interleaved static portfolio plus trace-guided candidates.
+
+`hybrid` and `portfolio` are union modes: a search finding never replaces the
+known baseline.  Candidate family labels describe evidence status, so a public
+`SECRET_MARKER` scoring probe cannot be mistaken for a confirmed secret leak.
+See [EXPERIMENTS.md](EXPERIMENTS.md) for the next submission matrix.
 
 ## Knowledge records
 
