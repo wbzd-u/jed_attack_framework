@@ -13,7 +13,8 @@ In Kaggle:
    processing to finish.
 3. Open the competition page, select **Code → New Notebook**, attach both the
    competition data and this private dataset in the right-side **Add Input**
-   panel, then select a GPU accelerator if the competition UI offers one.
+   panel. Keep the notebook on **CPU**: this competition rejects code
+   submissions from notebooks assigned a P100 GPU. Leave Internet disabled.
 4. Upload `kaggle_submission.ipynb` from this repository or replace the new
    notebook's contents with it.
 5. Set the `FRAMEWORK_ROOT` path in the first code cell only if automatic
