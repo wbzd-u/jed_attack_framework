@@ -21,6 +21,21 @@ Set the `EXPERIMENT` dictionary in the first cell of `kaggle_submission.ipynb`.
 Do not edit a completed version; fork it and give the new version a descriptive
 name.
 
+### 0. `transport-control-24`
+
+```python
+EXPERIMENT.update({
+    'mode': 'baseline',
+    'canary_count': 24,
+    'source_count': 0,
+    'standalone_canary': True,
+})
+```
+
+Question answered: can the current Dataset/Notebook upload path produce a
+valid official rerun using the already verified 24-canary family?  This is a
+transport control after an invalid submission, not a score-improvement run.
+
 ### A. `source-only`
 
 ```python

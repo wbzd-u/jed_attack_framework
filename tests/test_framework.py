@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from bundle_submission import bundle
 from jedfw.env import EnvAdapter
 from jedfw.diagnostics import diagnose_trace
 from jedfw.baseline import (
@@ -228,3 +229,14 @@ def test_hybrid_static_portfolio_preserves_baseline_and_can_add_families(monkeyp
     assert len(chains) == 43  # 24 canaries + 3 deputy + 4 fixture + 12 source probes
     assert any("SECRET_MARKER" in message for chain in chains for message in chain)
     assert any("scale_web_" in message for chain in chains for message in chain)
+
+
+def test_standalone_transport_control_has_no_package_import_dependency(tmp_path, monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("JED_STANDALONE_CANARY", "1")
+    attack_path = bundle(root, tmp_path)
+    source = attack_path.read_text(encoding="utf-8")
+    assert "class AttackAlgorithm(AttackAlgorithmBase):" in source
+    assert "from jedfw" not in source
+    assert "JED_CANARY_COUNT" in source
+    compile(source, str(attack_path), "exec")
