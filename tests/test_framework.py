@@ -241,6 +241,7 @@ def test_standalone_transport_control_has_no_package_import_dependency(tmp_path,
     assert "class AttackAlgorithm(AttackAlgorithmBase):" in source
     assert "from jedfw" not in source
     assert "JED_CANARY_COUNT" in source
+    assert "PROBE_PROMPT" not in source
     compile(source, str(attack_path), "exec")
 
 
@@ -304,9 +305,38 @@ def test_standalone_dynamic_canary_uses_conservative_per_model_counts(tmp_path, 
     assert fast.resets == fast.interactions == 2
     assert len({item.user_messages for item in fast_candidates}) == 900
 
+
+
+def test_standalone_static_canary_never_uses_env(tmp_path, monkeypatch):
+    class FakeAttackAlgorithmBase:
+        pass
+
+    class FakeAttackCandidate:
+        def __init__(self, *, user_messages):
+            self.user_messages = tuple(user_messages)
+
+    class NoEnv:
+        def __getattr__(self, name):
+            raise AssertionError(f"static canary must not access env.{name}")
+
+    sdk = ModuleType("aicomp_sdk")
+    attacks = ModuleType("aicomp_sdk.attacks")
+    attacks.AttackAlgorithmBase = FakeAttackAlgorithmBase
+    attacks.AttackCandidate = FakeAttackCandidate
+    sdk.attacks = attacks
+    monkeypatch.setitem(sys.modules, "aicomp_sdk", sdk)
+    monkeypatch.setitem(sys.modules, "aicomp_sdk.attacks", attacks)
+    monkeypatch.setenv("JED_STANDALONE_CANARY", "1")
     monkeypatch.setenv("JED_DYNAMIC_CANARY", "0")
-    monkeypatch.setenv("JED_CANARY_COUNT", "256")
-    static_env = ProbeEnv(posts=8)
-    static_candidates = algorithm.run(static_env, config=None)
-    assert len(static_candidates) == 256
-    assert static_env.resets == static_env.interactions == 0
+    monkeypatch.setenv("JED_CANARY_COUNT", "64")
+
+    root = Path(__file__).resolve().parents[1]
+    attack_path = bundle(root, tmp_path)
+    source = attack_path.read_text(encoding="utf-8")
+    assert "PROBE_PROMPT" not in source
+    namespace = {"__name__": "isolated_static_attack", "__file__": str(attack_path)}
+    exec(compile(source, str(attack_path), "exec"), namespace)
+
+    candidates = namespace["AttackAlgorithm"]().run(NoEnv(), config=None)
+    assert len(candidates) == 64
+    assert len({item.user_messages for item in candidates}) == 64

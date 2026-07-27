@@ -80,6 +80,25 @@ Question answered: does the now-validated CPU/self-contained submission path
 remain replay-valid when only the candidate count rises from 24 to 256?  This
 is the required scale checkpoint before any per-model adaptive portfolio.
 
+### B0. `static-canary-064`
+
+```python
+EXPERIMENT.update({
+    'mode': 'baseline',
+    'standalone_canary': True,
+    'dynamic_canary': False,
+    'canary_count': 64,
+    'source_count': 0,
+})
+```
+
+Question answered: after `24` succeeds and `256` fails to yield a final CSV,
+does the known-good static entry point survive a deliberately conservative
+first capacity step? It is intentionally generated from the same minimal
+source as the 24-candidate transport control. If it succeeds, test `96`, then
+`128`; if it fails, retain the verified 24-candidate control and inspect the
+hidden-run error boundary rather than changing the candidate shape.
+
 ### B2. `dynamic-canary-safe-v1`
 
 ```python
