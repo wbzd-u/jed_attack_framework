@@ -64,6 +64,43 @@ Question answered: how much of the public scorer-canary coverage survives at a
 larger replay volume?  The historical `baseline-v1` is the 24-candidate control
 with Public Score `2.160`; it must remain unchanged.
 
+### B1. `static-canary-256`
+
+```python
+EXPERIMENT.update({
+    'mode': 'baseline',
+    'standalone_canary': True,
+    'dynamic_canary': False,
+    'canary_count': 256,
+    'source_count': 0,
+})
+```
+
+Question answered: does the now-validated CPU/self-contained submission path
+remain replay-valid when only the candidate count rises from 24 to 256?  This
+is the required scale checkpoint before any per-model adaptive portfolio.
+
+### B2. `dynamic-canary-safe-v1`
+
+```python
+EXPERIMENT.update({
+    'mode': 'baseline',
+    'standalone_canary': True,
+    'dynamic_canary': True,
+    'gpt_canary_count': 400,
+    'gemma_canary_count': 900,
+    'model_probe_rounds': 2,
+    'gemma_probe_threshold': 5,
+    'source_count': 0,
+})
+```
+
+Question answered: can a small, non-sensitive tool-call behavior probe choose
+a useful per-model canary count?  Treat this as a separate hypothesis after
+the fixed-count scale checkpoints: tool-call count is not a direct measure of
+replay runtime.  The probe is not a finding; only the evaluator's later replay
+of the returned candidates may score.
+
 ### C. `deputy-256`
 
 ```python

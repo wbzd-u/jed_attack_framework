@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
+from types import ModuleType
 
 from bundle_submission import bundle
 from jedfw.env import EnvAdapter
@@ -240,3 +242,71 @@ def test_standalone_transport_control_has_no_package_import_dependency(tmp_path,
     assert "from jedfw" not in source
     assert "JED_CANARY_COUNT" in source
     compile(source, str(attack_path), "exec")
+
+
+def test_standalone_dynamic_canary_uses_conservative_per_model_counts(tmp_path, monkeypatch):
+    class FakeAttackAlgorithmBase:
+        pass
+
+    class FakeAttackCandidate:
+        def __init__(self, *, user_messages):
+            self.user_messages = tuple(user_messages)
+
+    class ProbeEnv:
+        def __init__(self, posts):
+            self.posts = posts
+            self.resets = 0
+            self.interactions = 0
+
+        def reset(self):
+            self.resets += 1
+
+        def interact(self, message, max_tool_hops=8):
+            self.interactions += 1
+            assert "health check" in message
+            assert max_tool_hops == 8
+
+        def export_trace_dict(self):
+            return {
+                "tool_events": [
+                    {"name": "http.post", "ok": True}
+                    for _ in range(self.posts)
+                ]
+            }
+
+    sdk = ModuleType("aicomp_sdk")
+    attacks = ModuleType("aicomp_sdk.attacks")
+    attacks.AttackAlgorithmBase = FakeAttackAlgorithmBase
+    attacks.AttackCandidate = FakeAttackCandidate
+    sdk.attacks = attacks
+    monkeypatch.setitem(sys.modules, "aicomp_sdk", sdk)
+    monkeypatch.setitem(sys.modules, "aicomp_sdk.attacks", attacks)
+    monkeypatch.setenv("JED_STANDALONE_CANARY", "1")
+    monkeypatch.setenv("JED_DYNAMIC_CANARY", "1")
+    monkeypatch.setenv("JED_GPT_CANARY_COUNT", "400")
+    monkeypatch.setenv("JED_GEMMA_CANARY_COUNT", "900")
+    monkeypatch.setenv("JED_MODEL_PROBE_ROUNDS", "2")
+    monkeypatch.setenv("JED_GEMMA_PROBE_THRESHOLD", "5")
+
+    root = Path(__file__).resolve().parents[1]
+    attack_path = bundle(root, tmp_path)
+    namespace = {"__name__": "isolated_dynamic_attack", "__file__": str(attack_path)}
+    exec(compile(attack_path.read_text(encoding="utf-8"), str(attack_path), "exec"), namespace)
+    algorithm = namespace["AttackAlgorithm"]()
+
+    slow = ProbeEnv(posts=4)
+    fast = ProbeEnv(posts=6)
+    slow_candidates = algorithm.run(slow, config=None)
+    fast_candidates = algorithm.run(fast, config=None)
+    assert len(slow_candidates) == 400
+    assert len(fast_candidates) == 900
+    assert slow.resets == slow.interactions == 2
+    assert fast.resets == fast.interactions == 2
+    assert len({item.user_messages for item in fast_candidates}) == 900
+
+    monkeypatch.setenv("JED_DYNAMIC_CANARY", "0")
+    monkeypatch.setenv("JED_CANARY_COUNT", "256")
+    static_env = ProbeEnv(posts=8)
+    static_candidates = algorithm.run(static_env, config=None)
+    assert len(static_candidates) == 256
+    assert static_env.resets == static_env.interactions == 0
