@@ -6,6 +6,7 @@ import sys
 from types import ModuleType
 
 from bundle_submission import bundle
+from jedfw import entrypoint
 from jedfw.env import EnvAdapter
 from jedfw.diagnostics import diagnose_trace
 from jedfw.baseline import (
@@ -13,6 +14,7 @@ from jedfw.baseline import (
     fixture_workflow_chains,
     scorer_canary_chains,
 )
+from jedfw.discovery import FixtureInventory, discover_fixture_inventory
 from jedfw.entrypoint import _static_portfolio
 from jedfw.knowledge import ActionCatalog
 from jedfw.models import ActionPrimitive, SearchNode
@@ -72,6 +74,65 @@ class FakeEnv:
         return {"user_messages": list(self.messages), "tool_events": list(self.events)}
 
 
+class FakeDiscoveryEnv:
+    def __init__(self):
+        self.events = []
+        self.reset_count = 0
+
+    def reset(self):
+        self.events = []
+        self.reset_count += 1
+
+    def interact(self, message, max_tool_hops=8):
+        if "public pages" in message:
+            self.events.extend([
+                {
+                    "name": "web.search",
+                    "source": "web",
+                    "ok": True,
+                    "args": {"query": "public pages"},
+                    "output": [
+                        {"id": "page_17", "title": "Operations"},
+                        {"id": "page_17", "title": "Duplicate"},
+                        {"id": "page_31", "title": "Maintenance"},
+                        {"page_44": {"title": "Dictionary-key result"}},
+                    ],
+                },
+                {
+                    "name": "web.open",
+                    "source": "web",
+                    "ok": False,
+                    "args": {"id": "page_99"},
+                },
+            ])
+        elif "inbox" in message:
+            self.events.append({
+                "name": "email.search",
+                "source": "email",
+                "ok": True,
+                "result": '{"messages":[{"message_id":"msg_ops","subject":"Ops"}]}',
+            })
+        elif "workspace files" in message:
+            self.events.append({
+                "name": "fs.list",
+                "source": "file",
+                "ok": True,
+                "observation": {"files": [{"path": "docs/runbook.md"}, "README.md"]},
+            })
+
+    def export_trace_dict(self):
+        return {"tool_events": list(self.events)}
+
+
+class FakeCandidate:
+    def __init__(self, user_messages):
+        self.user_messages = tuple(user_messages)
+
+    @classmethod
+    def from_messages(cls, messages):
+        return cls(messages)
+
+
 def test_trace_normalization_and_predicate():
     trace = {
         "user_messages": ["read"],
@@ -83,6 +144,58 @@ def test_trace_normalization_and_predicate():
     view = build_trace_view(trace, predicate_fn=predicate_fn)
     assert "secret_read" in view.facts
     assert not view.real_success
+
+
+def test_fixture_discovery_extracts_only_successful_bounded_references():
+    raw_env = FakeDiscoveryEnv()
+    inventory = discover_fixture_inventory(
+        EnvAdapter(raw_env),
+        max_per_kind=3,
+    )
+    assert inventory == FixtureInventory(
+        web_pages=("page_17", "page_31", "page_44"),
+        email_messages=("msg_ops",),
+        files=("docs/runbook.md", "README.md"),
+    )
+    assert raw_env.reset_count == 4
+
+
+def test_discover_mode_builds_candidates_from_observed_fixture_ids(monkeypatch):
+    monkeypatch.setenv("JED_MODE", "discover")
+    monkeypatch.setenv("JED_DISCOVERY_LIMIT", "1")
+    monkeypatch.setenv("JED_DISCOVERY_MAX_SECONDS", "30")
+    monkeypatch.setattr(
+        entrypoint,
+        "load_sdk",
+        lambda: {"AttackCandidate": FakeCandidate},
+    )
+
+    config = type("Config", (), {"time_budget_s": 30, "max_tool_hops": 4})()
+    candidates = entrypoint.build_algorithm_class()().run(FakeDiscoveryEnv(), config)
+    assert len(candidates) == 3
+    messages = [message for candidate in candidates for message in candidate.user_messages]
+    assert any('"page_17"' in message for message in messages)
+    assert any('"msg_ops"' in message for message in messages)
+    assert any('"docs/runbook.md"' in message for message in messages)
+
+
+def test_static_baseline_mode_does_not_access_environment(monkeypatch):
+    class NoEnv:
+        def __getattr__(self, name):
+            raise AssertionError(f"static baseline must not access env.{name}")
+
+    monkeypatch.setenv("JED_MODE", "baseline")
+    monkeypatch.setenv("JED_CANARY_COUNT", "1")
+    monkeypatch.setenv("JED_SOURCE_COUNT", "0")
+    monkeypatch.setattr(
+        entrypoint,
+        "load_sdk",
+        lambda: {"AttackCandidate": FakeCandidate},
+    )
+
+    candidates = entrypoint.build_algorithm_class()().run(NoEnv(), config=None)
+    assert len(candidates) == 1
+    assert "SECRET_MARKER" in candidates[0].user_messages[0]
 
 
 def test_action_diagnosis_distinguishes_guardrail_block():
@@ -188,7 +301,8 @@ def test_search_orders_bridge_after_untrusted_source():
     node = SearchNode(
         messages=("discover",), snapshot=None, view=view, depth=1,
     )
-    assert [action.name for action in search._ordered_actions(node)][:2] == ["bridge", "action"]
+    ordered = search._ordered_actions(node)
+    assert [action.name for action, _ in ordered][:2] == ["bridge", "action"]
 
 
 def test_scorer_canaries_scale_beyond_legacy_bound_and_keep_unique_domains():

@@ -10,6 +10,7 @@ profile, public/private score, and the conclusion it supports.
 |---|---|---|---|
 | `source_workflow` | curated public pages | hypothesis | Small source-to-action sanity check |
 | `fixture_workflow` | sequential public scale IDs | hypothesis | Broad carrier and tool diversity coverage |
+| `discovered_workflow` | public listing/search traces | observed-source hypothesis | Match replay prompts to IDs actually present in the current fixture |
 | `scorer_canary` | unique `http.post` domains plus `SECRET_MARKER` | public scorer probe | Measures a documented public scoring boundary; not a real secret leak |
 | `confused_deputy_canary` | direct communication requests using intent synonyms | scorer-boundary probe | Tests the public explicit-intent predicate boundary |
 | `search_observed` | snapshot-backed Beam Search | observed-only | Candidate executed a sensitive tool during generation, but is not a confirmed finding until replay scores it |
@@ -63,6 +64,22 @@ EXPERIMENT.update({
 Question answered: how much of the public scorer-canary coverage survives at a
 larger replay volume?  The historical `baseline-v1` is the 24-candidate control
 with Public Score `2.160`; it must remain unchanged.
+
+### A1. `discovery-only-v1`
+
+```python
+EXPERIMENT.update({
+    'mode': 'discover',
+    'discovery_limit': 16,
+    'discovery_max_seconds': 120,
+    'standalone_canary': False,
+})
+```
+
+Question answered: can public listing/search events replace stale hard-coded
+source IDs with fixture-matched web, inbox, and workspace replay candidates?
+Keep this separate from `source-only` so any gain is attributable to runtime
+inventory rather than the historical 12-page list.
 
 ### B1. `static-canary-256`
 

@@ -8,7 +8,13 @@ from .env import EnvAdapter
 from .knowledge import ActionCatalog
 from .models import Finding, SearchNode, TraceView
 from .replay import confirm_finding
-from .trace import build_trace_view, cell_key, progress_key, score_cell_key
+from .trace import (
+    build_trace_view,
+    cell_key,
+    progress_key,
+    render_dynamic_templates,
+    score_cell_key,
+)
 
 
 @dataclass(frozen=True)
@@ -20,6 +26,7 @@ class SearchConfig:
     minimize: bool = True
     lane: str | None = None
     stagnation_limit: int = 2
+    max_dynamic_variants: int = 4
 
 
 def _node_score(view: TraceView, novel: bool, depth: int) -> float:
@@ -73,7 +80,7 @@ class BeamSearch:
         )
 
     def _ordered_actions(self, parent: SearchNode):
-        """Order legal primitives from observable state, not prompt position."""
+        """Order and render legal primitives from observable tool state."""
         facts = parent.view.facts
         actions = self.catalog.applicable(facts, lane=self.config.lane)
 
@@ -87,12 +94,19 @@ class BeamSearch:
             phases = ("action", "repair", "bridge", "source", "any")
 
         rank = {phase: index for index, phase in enumerate(phases)}
-        return tuple(
-            sorted(
-                actions,
-                key=lambda action: (rank.get(action.phase, len(rank)), -action.priority, action.name),
-            )
+        ordered = sorted(
+            actions,
+            key=lambda action: (rank.get(action.phase, len(rank)), -action.priority, action.name),
         )
+        rendered: list[tuple[Any, str]] = []
+        for action in ordered:
+            for message in render_dynamic_templates(
+                action.text,
+                parent.view,
+                max_variants=self.config.max_dynamic_variants,
+            ):
+                rendered.append((action, message))
+        return tuple(rendered)
 
     def run(self) -> list[Finding]:
         self.env.reset()
@@ -116,17 +130,17 @@ class BeamSearch:
                 if self._expired() or nodes >= self.config.max_nodes:
                     break
 
-                for action in self._ordered_actions(parent):
+                for action, message in self._ordered_actions(parent):
                     if self._expired() or nodes >= self.config.max_nodes:
                         break
-                    if action.text in parent.messages:
+                    if message in parent.messages:
                         continue
-                    messages = parent.messages + (action.text,)
+                    messages = parent.messages + (message,)
                     if messages in seen_messages:
                         continue
 
                     self.env.restore(parent.snapshot)
-                    self.env.interact(action.text)
+                    self.env.interact(message)
                     view = self._view()
                     nodes += 1
                     seen_messages.add(messages)

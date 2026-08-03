@@ -73,14 +73,17 @@ evidence:
 |---|---|---|
 | Static scorer probe | public scorer contract | a replayable scoring boundary only |
 | Static source/fixture workflow | public carriers | a hypothesis to be replayed |
+| Discovery-generated workflow | successful public listing/search events | a fixture-matched hypothesis, not a predicate hit |
 | Search-observed candidate | successful sensitive tool event during generation | the current agent took an observable action, not that the evaluator will score it |
 | Search-confirmed finding | clean reset replay plus SDK predicate | a local benchmark finding |
 | Official leaderboard result | Kaggle hidden replay | the only hosted-evaluation evidence |
 
-`baseline`, `score`, and `fixture` modes return one controlled static family.
+`baseline`, `score`, and `fixture` modes return one controlled static family;
+`discover` returns exact-reference candidates derived from public tool traces.
 `hybrid` and `portfolio` append dynamic search candidates to static coverage;
-they never replace a known baseline because a generation-time local success is
-not evidence that the static candidate stopped replaying.
+they may also append discovery candidates when `JED_DISCOVERY_LIMIT` is set.
+Neither dynamic family replaces a known baseline because a generation-time
+local success is not evidence that the static candidate stopped replaying.
 
 ## Four search lanes
 

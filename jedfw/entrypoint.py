@@ -13,6 +13,7 @@ from .baseline import (
     score_chains,
     source_workflow_chains,
 )
+from .discovery import discover_fixture_inventory, discovered_workflow_chains
 from .env import EnvAdapter
 from .knowledge import ActionCatalog
 from .sdk import load_sdk, safe_candidates
@@ -200,6 +201,34 @@ def _search_portfolio(
     return _dedupe_chains(confirmed, observed, limit=limit)
 
 
+def _discovery_portfolio(
+    env: Any,
+    config: Any,
+    *,
+    limit: int,
+    default_per_kind: int,
+) -> tuple[tuple[str, ...], ...]:
+    """Probe public resource listings and build exact-reference replay chains."""
+    per_kind = _int_env("JED_DISCOVERY_LIMIT", default_per_kind, upper=64)
+    if per_kind == 0:
+        return ()
+
+    time_budget = float(getattr(config, "time_budget_s", 30.0) or 30.0)
+    max_hops = int(getattr(config, "max_tool_hops", 8) or 8)
+    default_seconds = min(120.0, max(1.0, time_budget * 0.7))
+    discovery_seconds = min(
+        _float_env("JED_DISCOVERY_MAX_SECONDS", default_seconds),
+        max(0.1, time_budget * 0.85),
+    )
+    inventory = discover_fixture_inventory(
+        EnvAdapter(env, max_tool_hops=max_hops),
+        max_per_kind=per_kind,
+        deadline=time.monotonic() + discovery_seconds,
+    )
+    chains = discovered_workflow_chains(inventory)
+    return _dedupe_chains((item.messages for item in chains), limit=limit)
+
+
 def build_algorithm_class():
     """Return an SDK-compatible class while keeping offline imports optional."""
     sdk = load_sdk()
@@ -212,20 +241,46 @@ def build_algorithm_class():
                 return []
 
             mode = os.getenv("JED_MODE", "search").strip().lower()
-            if mode not in {"baseline", "score", "fixture", "search", "hybrid", "portfolio"}:
+            if mode not in {
+                "baseline",
+                "score",
+                "fixture",
+                "discover",
+                "search",
+                "hybrid",
+                "portfolio",
+            }:
                 mode = "search"
             limit = _int_env("JED_MAX_CANDIDATES", MAX_REPLAY_CANDIDATES, lower=1)
             static_chains = _static_portfolio(mode, limit=limit)
 
             if mode in {"baseline", "score", "fixture"}:
                 selected = static_chains
+            elif mode == "discover":
+                selected = _discovery_portfolio(
+                    env,
+                    config,
+                    limit=limit,
+                    default_per_kind=16,
+                )
             else:
+                discovery_chains = _discovery_portfolio(
+                    env,
+                    config,
+                    limit=limit,
+                    default_per_kind=0,
+                )
                 search_chains = _search_portfolio(env, config, sdk, limit=limit)
                 # Regression protection: hybrid/portfolio always retain the
                 # static baseline even when the online search finds something.
                 # Static chains lead so a replay timeout cannot erase known
                 # score coverage; confirmed search paths are still appended.
-                selected = _dedupe_chains(static_chains, search_chains, limit=limit)
+                selected = _dedupe_chains(
+                    static_chains,
+                    discovery_chains,
+                    search_chains,
+                    limit=limit,
+                )
 
             return [safe_candidates(candidate_cls, messages) for messages in selected]
 

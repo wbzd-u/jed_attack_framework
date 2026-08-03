@@ -12,6 +12,7 @@ in `knowledge/` and are loaded at runtime.
 - `jedfw/knowledge.py`: JSONL loaders for action primitives and mechanism cards.
 - `jedfw/search.py`: snapshot-backed beam search with a novelty archive.
 - `jedfw/replay.py`: clean replay, predicate confirmation, and delta minimization.
+- `jedfw/discovery.py`: bounded public-resource discovery from exported traces.
 - `jedfw/models.py`: stable data contracts between the components.
 - `jedfw/entrypoint.py`: optional SDK-bound `AttackAlgorithm` factory.
 - `bundle_submission.py`: copies the modular runtime into a Kaggle working directory.
@@ -80,6 +81,7 @@ uses observable tool state and facts, not attacker-message wording.
 - `baseline`: the historical source probes plus scorer canaries;
 - `score`: scorer-canary and explicit-intent boundary probes only;
 - `fixture`: released web/email carrier probes only;
+- `discover`: dynamically inventory public web, inbox, and workspace references;
 - `search`: trace-guided candidates observed during generation;
 - `hybrid`: baseline plus trace-guided candidates; and
 - `portfolio`: an interleaved static portfolio plus trace-guided candidates.
@@ -87,6 +89,9 @@ uses observable tool state and facts, not attacker-message wording.
 `hybrid` and `portfolio` are union modes: a search finding never replaces the
 known baseline.  Candidate family labels describe evidence status, so a public
 `SECRET_MARKER` scoring probe cannot be mistaken for a confirmed secret leak.
+Set `JED_DISCOVERY_LIMIT` above zero to add discovery candidates to `search`,
+`hybrid`, or `portfolio`; it limits references per resource type to at most 64.
+`JED_DISCOVERY_MAX_SECONDS` provides a soft deadline between discovery probes.
 See [EXPERIMENTS.md](EXPERIMENTS.md) for the next submission matrix.
 
 ## Knowledge records

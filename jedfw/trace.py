@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 
@@ -22,6 +23,97 @@ def _event_ok(event: Mapping[str, Any]) -> bool:
     if "success" in event:
         return event.get("success") is True
     return True
+
+
+def _clean_dynamic_identifier(value: Any) -> str | None:
+    """Accept only a small, printable identifier from an authenticated listing."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or len(value) > 200 or any(ord(char) < 32 for char in value):
+        return None
+    return value
+
+
+def _listing_output(event: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Parse a successful SDK listing result, never a page/mail body."""
+    if not _event_ok(event):
+        return None
+    value = event.get("output")
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
+
+
+def dynamic_identifiers(events: Sequence[Mapping[str, Any]]) -> dict[str, tuple[str, ...]]:
+    """Extract opaque IDs only from successful structured listing outputs."""
+
+    schemas = {
+        "web.search": ("WEB_RESULT_ID", "results"),
+        "email.list": ("EMAIL_MESSAGE_ID", "emails"),
+    }
+    found: dict[str, list[str]] = {"WEB_RESULT_ID": [], "EMAIL_MESSAGE_ID": []}
+    seen: dict[str, set[str]] = {key: set() for key in found}
+
+    for event in events:
+        rule = schemas.get(_event_name(event))
+        if rule is None:
+            continue
+        parsed = _listing_output(event)
+        if parsed is None:
+            continue
+        key, list_key = rule
+        items = parsed.get(list_key)
+        if not isinstance(items, Sequence) or isinstance(items, (str, bytes, bytearray)):
+            continue
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            identifier = _clean_dynamic_identifier(item.get("id"))
+            if identifier is None or identifier in seen[key]:
+                continue
+            seen[key].add(identifier)
+            found[key].append(identifier)
+
+    return {key: tuple(value) for key, value in found.items()}
+
+
+def render_dynamic_templates(
+    template: str, view: "TraceView", *, max_variants: int = 4
+) -> tuple[str, ...]:
+    """Render only opaque IDs from this trace into an action template."""
+
+    placeholders = tuple(
+        placeholder
+        for placeholder in ("$WEB_RESULT_ID", "$EMAIL_MESSAGE_ID")
+        if placeholder in template
+    )
+    if not placeholders:
+        return (template,)
+
+    identifiers = dynamic_identifiers(view.events)
+    variants = [template]
+    cap = max(1, int(max_variants))
+    for placeholder in placeholders:
+        values = identifiers[placeholder[1:]]
+        if not values:
+            return ()
+        next_variants: list[str] = []
+        for current in variants:
+            for value in values:
+                rendered = current.replace(placeholder, json.dumps(value, ensure_ascii=True))
+                if rendered not in next_variants:
+                    next_variants.append(rendered)
+                if len(next_variants) >= cap:
+                    break
+            if len(next_variants) >= cap:
+                break
+        variants = next_variants
+    return tuple(variants)
 
 
 def trace_events(trace: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -56,7 +148,14 @@ def _facts(events: Sequence[Mapping[str, Any]], predicates: Sequence[Mapping[str
 
     for event in events:
         if not _event_ok(event):
-            facts.add("guardrail_block")
+            name = _event_name(event)
+            error = str(event.get("error") or "").lower()
+            if error.startswith(("denied:", "blocked_by_hook", "confirm_required:")):
+                facts.add("guardrail_block")
+                if name:
+                    facts.add(f"guardrail_block:{name}")
+            elif name:
+                facts.add(f"tool_failure:{name}")
             continue
         name = _event_name(event)
         source = str(event.get("source", "")).lower()
@@ -90,6 +189,12 @@ def _facts(events: Sequence[Mapping[str, Any]], predicates: Sequence[Mapping[str
             facts.add("protected_write")
         if not _event_ok(event):
             facts.add("guardrail_block")
+
+    identifiers = dynamic_identifiers(events)
+    if identifiers["WEB_RESULT_ID"]:
+        facts.add("web_result_id")
+    if identifiers["EMAIL_MESSAGE_ID"]:
+        facts.add("email_message_id")
 
     if any(str(item.get("predicate", "")) == "UNTRUSTED_TO_ACTION" for item in predicates):
         facts.add("untrusted_to_action")
